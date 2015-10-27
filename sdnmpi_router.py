@@ -79,13 +79,15 @@ class SDNMPIRouter(app_manager.RyuApp):
             dst_rank = struct.unpack("<h", bin_dst[4:6])[0]
 
             self.logger.info("SDNMPI communication from rank %s to rank %s",
-                    src_rank, dst_rank)
+                             src_rank, dst_rank)
 
             dst_mac = self.rank_to_mac[dst_rank]
             if dst_mac in self.mac_to_port[dpid]:
                 out_port = self.mac_to_port[dpid][dst_mac]
                 actions = [
-                    datapath.ofproto_parser.OFPActionSetDlDst(haddr_to_bin(dst_mac)),
+                    datapath.ofproto_parser.OFPActionSetDlDst(
+                        haddr_to_bin(dst_mac)
+                    ),
                     datapath.ofproto_parser.OFPActionOutput(out_port),
                 ]
             else:
@@ -93,7 +95,6 @@ class SDNMPIRouter(app_manager.RyuApp):
                 actions = [
                     datapath.ofproto_parser.OFPActionOutput(out_port),
                 ]
-
 
         # install a flow to avoid packet_in next time
         if out_port != ofproto.OFPP_FLOOD:
@@ -107,4 +108,3 @@ class SDNMPIRouter(app_manager.RyuApp):
             datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
             actions=actions, data=data)
         datapath.send_msg(out)
-
