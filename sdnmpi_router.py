@@ -16,6 +16,7 @@ from ryu.topology import event, switches
 
 from util.rank_allocation_db import RankAllocationDB
 from util.switch_fdb import SwitchFDB
+from util.topology_db import TopologyDB
 
 
 class SDNMPIRouter(app_manager.RyuApp):
@@ -33,9 +34,41 @@ class SDNMPIRouter(app_manager.RyuApp):
         self.rankdb = RankAllocationDB()
         self.rankdb.changed.connect(self.rankdb_update_handler)
 
+        self.toplogydb = TopologyDB()
+        self.toplogydb.switch_added.connect(
+            self.topologydb_switch_added_handler
+        )
+        self.toplogydb.switch_deleted.connect(
+            self.topologydb_switch_deleted_handler
+        )
+        self.toplogydb.link_added.connect(
+            self.topologydb_link_added_handler
+        )
+        self.toplogydb.link_deleted.connect(
+            self.topologydb_link_deleted_handler
+        )
+        self.toplogydb.host_added.connect(
+            self.topologydb_host_added_handler
+        )
+
         self.rpc_clients = []
         wsgi = kwargs["wsgi"]
         wsgi.register(WebSocketSDNMPIController, {"app": self})
+
+    def topologydb_switch_added_handler(self, switch):
+        self._rpc_broadcall("add_switch", switch.to_dict())
+
+    def topologydb_switch_deleted_handler(self, switch):
+        self._rpc_broadcall("delete_switch", switch.to_dict())
+
+    def topologydb_link_added_handler(self, link):
+        self._rpc_broadcall("add_link", link.to_dict())
+
+    def topologydb_link_deleted_handler(self, link):
+        self._rpc_broadcall("delete_link", link.to_dict())
+
+    def topologydb_host_added_handler(self, host):
+        self._rpc_broadcall("add_host", host.to_dict())
 
     def fdb_update_handler(self, dpid, mac, port):
         self._rpc_broadcall("update_fdb", dpid, mac, port)
@@ -43,29 +76,36 @@ class SDNMPIRouter(app_manager.RyuApp):
     def rankdb_update_handler(self, rank, mac):
         self._rpc_broadcall("update_rankdb", rank, mac)
 
-    def init_client_db(self, rpc_client):
+    def init_client(self, rpc_client):
         self._rpc_call(rpc_client, "init_fdb", self.fdb.to_dict())
         self._rpc_call(rpc_client, "init_rankdb", self.rankdb.to_dict())
+        self._rpc_call(rpc_client, "init_topologydb",
+                       self.topologydb.to_dict())
 
     @set_ev_cls(event.EventSwitchEnter)
     def _event_switch_enter_handler(self, ev):
-        msg = ev.switch.to_dict()
-        self._rpc_broadcall("add_switch", msg)
+        self.logger.info("Switch added: %s", ev.switch)
+        self.toplogydb.add_switch(ev.switch)
 
     @set_ev_cls(event.EventSwitchLeave)
     def _event_switch_leave_handler(self, ev):
-        msg = ev.switch.to_dict()
-        self._rpc_broadcall("delete_switch", msg)
+        self.logger.info("Switch deleted: %s", ev.switch)
+        self.toplogydb.delete_switch(ev.switch)
 
     @set_ev_cls(event.EventLinkAdd)
     def _event_link_add_handler(self, ev):
-        msg = ev.link.to_dict()
-        self._rpc_broadcall("add_link", msg)
+        self.logger.info("Link added: %s", ev.link)
+        self.toplogydb.add_link(ev.link)
 
     @set_ev_cls(event.EventLinkDelete)
     def _event_link_delete_handler(self, ev):
-        msg = ev.link.to_dict()
-        self._rpc_broadcall("delete_link", msg)
+        self.logger.info("Link deleted: %s", ev.link)
+        self.toplogydb.delete_link(ev.link)
+
+    @set_ev_cls(event.EventHostAdd)
+    def _event_host_add_handler(self, ev):
+        self.logger.info("Host added: %s", ev.host)
+        self.toplogydb.add_host(ev.host)
 
     def add_flow(self, datapath, in_port, dst, actions):
         ofproto = datapath.ofproto
@@ -108,7 +148,7 @@ class SDNMPIRouter(app_manager.RyuApp):
 
         dpid = datapath.id
 
-        self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
+        self.logger.info("Packet in %s %s %s %s", dpid, src, dst, msg.in_port)
 
         # learn a mac address to avoid FLOOD next time.
         self.fdb.update(dpid, src, msg.in_port)
@@ -189,6 +229,6 @@ class WebSocketSDNMPIController(ControllerBase):
     def _websocket_handler(self, ws):
         rpc_client = WebSocketRPCClient(ws)
         self.app.rpc_clients.append(rpc_client)
-        # init_client_db requires a running event loop
-        spawn(self.app.init_client_db, rpc_client)
+        # init_client requires a running event loop
+        spawn(self.app.init_client, rpc_client)
         rpc_client.serve_forever()
