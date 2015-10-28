@@ -1,24 +1,45 @@
 import struct
 
+from socket import error as SocketError
+
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
 from ryu.ofproto import ofproto_v1_0
-
 from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
 from ryu.lib.packet import packet, ethernet, ether_types, udp
+from ryu.app.wsgi import (ControllerBase, WSGIApplication, websocket,
+                          WebSocketRPCClient)
+from ryu.contrib.tinyrpc.exc import InvalidReplyError
+
 
 from util.rank_allocation_db import RankAllocationDB
 from util.switch_fdb import SwitchFDB
 
 
 class SDNMPIRouter(app_manager.RyuApp):
+    _CONTEXTS = {
+        "wsgi": WSGIApplication,
+    }
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(SDNMPIRouter, self).__init__(*args, **kwargs)
         self.fdb = SwitchFDB()
+        self.fdb.changed.connect(self.fdb_update_handler)
+
         self.rankdb = RankAllocationDB()
+        self.rankdb.changed.connect(self.rankdb_update_handler)
+
+        self.rpc_clients = []
+        wsgi = kwargs["wsgi"]
+        wsgi.register(WebSocketSDNMPIController, {"app": self})
+
+    def fdb_update_handler(self, dpid, mac, port):
+        self._rpc_broadcall("update_fdb", dpid, mac, port)
+
+    def rankdb_update_handler(self, rank, mac):
+        self._rpc_broadcall("update_rankdb", rank, mac)
 
     def add_flow(self, datapath, in_port, dst, actions):
         ofproto = datapath.ofproto
@@ -109,3 +130,36 @@ class SDNMPIRouter(app_manager.RyuApp):
             datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
             actions=actions, data=data)
         datapath.send_msg(out)
+
+    def _rpc_call(self, rpc_server, func_name, *args):
+        try:
+            getattr(rpc_server, func_name)(*args)
+        except SocketError:
+            self.logger.debug("WebSocket disconnected: ", rpc_server.ws)
+            return False
+        except InvalidReplyError as e:
+            self.logger.error(e)
+        return True
+
+    def _rpc_broadcall(self, func_name, *args):
+        disconnected_clients = []
+        for rpc_client in self.rpc_clients:
+            rpc_server = rpc_client.get_proxy()
+            success = self._rpc_call(rpc_server, func_name, *args)
+            if not success:
+                disconnected_clients.append(rpc_client)
+        for client in disconnected_clients:
+            self.rpc_clients.remove(client)
+
+
+class WebSocketSDNMPIController(ControllerBase):
+    def __init__(self, req, link, data, **config):
+        super(WebSocketSDNMPIController, self).__init__(req, link, data,
+                                                        **config)
+        self.app = data["app"]
+
+    @websocket("sdnmpi", "/v1.0/sdnmpi/ws")
+    def _websocket_handler(self, ws):
+        rpc_client = WebSocketRPCClient(ws)
+        self.app.rpc_clients.append(rpc_client)
+        rpc_client.serve_forever()
