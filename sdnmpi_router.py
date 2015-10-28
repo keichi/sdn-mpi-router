@@ -3,6 +3,7 @@ import struct
 from socket import error as SocketError
 
 from ryu.base import app_manager
+from ryu.lib.hub import spawn
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
 from ryu.ofproto import ofproto_v1_0
@@ -40,6 +41,10 @@ class SDNMPIRouter(app_manager.RyuApp):
 
     def rankdb_update_handler(self, rank, mac):
         self._rpc_broadcall("update_rankdb", rank, mac)
+
+    def init_client_db(self, rpc_client):
+        self._rpc_call(rpc_client, "init_fdb", self.fdb.to_dict())
+        self._rpc_call(rpc_client, "init_rankdb", self.rankdb.to_dict())
 
     def add_flow(self, datapath, in_port, dst, actions):
         ofproto = datapath.ofproto
@@ -131,8 +136,10 @@ class SDNMPIRouter(app_manager.RyuApp):
             actions=actions, data=data)
         datapath.send_msg(out)
 
-    def _rpc_call(self, rpc_server, func_name, *args):
+    def _rpc_call(self, rpc_client, func_name, *args):
         try:
+            # one_way option is ignored in Ryu 3.26 :-(
+            rpc_server = rpc_client.get_proxy()
             getattr(rpc_server, func_name)(*args)
         except SocketError:
             self.logger.debug("WebSocket disconnected: ", rpc_server.ws)
@@ -144,8 +151,7 @@ class SDNMPIRouter(app_manager.RyuApp):
     def _rpc_broadcall(self, func_name, *args):
         disconnected_clients = []
         for rpc_client in self.rpc_clients:
-            rpc_server = rpc_client.get_proxy()
-            success = self._rpc_call(rpc_server, func_name, *args)
+            success = self._rpc_call(rpc_client, func_name, *args)
             if not success:
                 disconnected_clients.append(rpc_client)
         for client in disconnected_clients:
@@ -162,4 +168,6 @@ class WebSocketSDNMPIController(ControllerBase):
     def _websocket_handler(self, ws):
         rpc_client = WebSocketRPCClient(ws)
         self.app.rpc_clients.append(rpc_client)
+        # init_client_db requires a running event loop
+        spawn(self.app.init_client_db, rpc_client)
         rpc_client.serve_forever()
