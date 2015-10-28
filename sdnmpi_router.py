@@ -8,14 +8,17 @@ from ryu.ofproto import ofproto_v1_0
 from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
 from ryu.lib.packet import packet, ethernet, ether_types, udp
 
+from util.rank_allocation_db import RankAllocationDB
+from util.switch_fdb import SwitchFDB
+
 
 class SDNMPIRouter(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         super(SDNMPIRouter, self).__init__(*args, **kwargs)
-        self.mac_to_port = {}
-        self.rank_to_mac = {}
+        self.fdb = SwitchFDB()
+        self.rankdb = RankAllocationDB()
 
     def add_flow(self, datapath, in_port, dst, actions):
         ofproto = datapath.ofproto
@@ -35,7 +38,7 @@ class SDNMPIRouter(app_manager.RyuApp):
         if udp_pkt and udp_pkt.dst_port == 61000:
             payload = pkt.protocols[-1]
             rank = struct.unpack("<i", payload)[0]
-            self.rank_to_mac[rank] = eth.src
+            self.rankdb.update(rank, eth.src)
             self.logger.info("Detected MPI rank %s on %s", rank, eth.src)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -57,17 +60,15 @@ class SDNMPIRouter(app_manager.RyuApp):
             return
 
         dpid = datapath.id
-        self.mac_to_port.setdefault(dpid, {})
 
         self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
 
         # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[dpid][src] = msg.in_port
+        self.fdb.update(dpid, src, msg.in_port)
 
         # check if we know the destionation port; if not we flood
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
-        else:
+        out_port = self.fdb.get_port(dpid, dst)
+        if out_port is None:
             out_port = ofproto.OFPP_FLOOD
 
         actions = [
@@ -81,9 +82,9 @@ class SDNMPIRouter(app_manager.RyuApp):
             self.logger.info("SDNMPI communication from rank %s to rank %s",
                              src_rank, dst_rank)
 
-            dst_mac = self.rank_to_mac[dst_rank]
-            if dst_mac in self.mac_to_port[dpid]:
-                out_port = self.mac_to_port[dpid][dst_mac]
+            dst_mac = self.rankdb.get_mac(dst_rank)
+            out_port = self.fdb.get_port(dpid, dst_mac)
+            if out_port is not None:
                 actions = [
                     datapath.ofproto_parser.OFPActionSetDlDst(
                         haddr_to_bin(dst_mac)
