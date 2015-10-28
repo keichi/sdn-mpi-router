@@ -12,7 +12,7 @@ from ryu.lib.packet import packet, ethernet, ether_types, udp
 from ryu.app.wsgi import (ControllerBase, WSGIApplication, websocket,
                           WebSocketRPCClient)
 from ryu.contrib.tinyrpc.exc import InvalidReplyError
-
+from ryu.topology import event, switches
 
 from util.rank_allocation_db import RankAllocationDB
 from util.switch_fdb import SwitchFDB
@@ -21,6 +21,7 @@ from util.switch_fdb import SwitchFDB
 class SDNMPIRouter(app_manager.RyuApp):
     _CONTEXTS = {
         "wsgi": WSGIApplication,
+        "switches": switches.Switches,
     }
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
@@ -45,6 +46,26 @@ class SDNMPIRouter(app_manager.RyuApp):
     def init_client_db(self, rpc_client):
         self._rpc_call(rpc_client, "init_fdb", self.fdb.to_dict())
         self._rpc_call(rpc_client, "init_rankdb", self.rankdb.to_dict())
+
+    @set_ev_cls(event.EventSwitchEnter)
+    def _event_switch_enter_handler(self, ev):
+        msg = ev.switch.to_dict()
+        self._rpc_broadcall("add_switch", msg)
+
+    @set_ev_cls(event.EventSwitchLeave)
+    def _event_switch_leave_handler(self, ev):
+        msg = ev.switch.to_dict()
+        self._rpc_broadcall("delete_switch", msg)
+
+    @set_ev_cls(event.EventLinkAdd)
+    def _event_link_add_handler(self, ev):
+        msg = ev.link.to_dict()
+        self._rpc_broadcall("add_link", msg)
+
+    @set_ev_cls(event.EventLinkDelete)
+    def _event_link_delete_handler(self, ev):
+        msg = ev.link.to_dict()
+        self._rpc_broadcall("delete_link", msg)
 
     def add_flow(self, datapath, in_port, dst, actions):
         ofproto = datapath.ofproto
