@@ -32,7 +32,12 @@ class SDNMPIRouter(app_manager.RyuApp):
         self.fdb.changed.connect(self.fdb_update_handler)
 
         self.rankdb = RankAllocationDB()
-        self.rankdb.changed.connect(self.rankdb_update_handler)
+        self.rankdb.process_added.connect(
+            self.rankdb_process_added_handler
+        )
+        self.rankdb.process_deleted.connect(
+            self.rankdb_process_deleted_handler
+        )
 
         self.topologydb = TopologyDB()
         self.topologydb.switch_added.connect(
@@ -55,6 +60,12 @@ class SDNMPIRouter(app_manager.RyuApp):
         wsgi = kwargs["wsgi"]
         wsgi.register(WebSocketSDNMPIController, {"app": self})
 
+    def rankdb_process_added_handler(self, rank, mac):
+        self._rpc_broadcall("add_process", rank, mac)
+
+    def rankdb_process_deleted_handler(self, rank):
+        self._rpc_broadcall("delete_process", rank)
+
     def topologydb_switch_added_handler(self, switch):
         self._rpc_broadcall("add_switch", switch.to_dict())
 
@@ -72,9 +83,6 @@ class SDNMPIRouter(app_manager.RyuApp):
 
     def fdb_update_handler(self, dpid, mac, port):
         self._rpc_broadcall("update_fdb", dpid, mac, port)
-
-    def rankdb_update_handler(self, rank, mac):
-        self._rpc_broadcall("update_rankdb", rank, mac)
 
     def init_client(self, rpc_client):
         self._rpc_call(rpc_client, "init_fdb", self.fdb.to_dict())
@@ -122,11 +130,11 @@ class SDNMPIRouter(app_manager.RyuApp):
             t, = struct.unpack("<i", payload[:4])
             if t == 0:
                 rank, = struct.unpack("<i", payload[4:8])
-                self.rankdb.update(rank, eth.src)
+                self.rankdb.add_process(rank, eth.src)
                 self.logger.info("MPI process %s started at %s", rank, eth.src)
             elif t == 1:
                 rank, = struct.unpack("<i", payload[4:8])
-                self.rankdb.update(rank, eth.src)
+                self.rankdb.delete_prcess(rank)
                 self.logger.info("MPI process %s exited at %s", rank, eth.src)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
