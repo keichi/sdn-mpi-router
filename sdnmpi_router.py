@@ -119,9 +119,15 @@ class SDNMPIRouter(app_manager.RyuApp):
         udp_pkt = pkt.get_protocol(udp.udp)
         if udp_pkt and udp_pkt.dst_port == 61000:
             payload = pkt.protocols[-1]
-            rank = struct.unpack("<i", payload)[0]
-            self.rankdb.update(rank, eth.src)
-            self.logger.info("Detected MPI rank %s on %s", rank, eth.src)
+            t, = struct.unpack("<i", payload[:4])
+            if t == 0:
+                rank, = struct.unpack("<i", payload[4:8])
+                self.rankdb.update(rank, eth.src)
+                self.logger.info("MPI process %s started at %s", rank, eth.src)
+            elif t == 1:
+                rank, = struct.unpack("<i", payload[4:8])
+                self.rankdb.update(rank, eth.src)
+                self.logger.info("MPI process %s exited at %s", rank, eth.src)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
