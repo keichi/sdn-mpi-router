@@ -34,20 +34,20 @@ class SDNMPIRouter(app_manager.RyuApp):
         self.rankdb = RankAllocationDB()
         self.rankdb.changed.connect(self.rankdb_update_handler)
 
-        self.toplogydb = TopologyDB()
-        self.toplogydb.switch_added.connect(
+        self.topologydb = TopologyDB()
+        self.topologydb.switch_added.connect(
             self.topologydb_switch_added_handler
         )
-        self.toplogydb.switch_deleted.connect(
+        self.topologydb.switch_deleted.connect(
             self.topologydb_switch_deleted_handler
         )
-        self.toplogydb.link_added.connect(
+        self.topologydb.link_added.connect(
             self.topologydb_link_added_handler
         )
-        self.toplogydb.link_deleted.connect(
+        self.topologydb.link_deleted.connect(
             self.topologydb_link_deleted_handler
         )
-        self.toplogydb.host_added.connect(
+        self.topologydb.host_added.connect(
             self.topologydb_host_added_handler
         )
 
@@ -84,28 +84,23 @@ class SDNMPIRouter(app_manager.RyuApp):
 
     @set_ev_cls(event.EventSwitchEnter)
     def _event_switch_enter_handler(self, ev):
-        self.logger.info("Switch added: %s", ev.switch)
-        self.toplogydb.add_switch(ev.switch)
+        self.topologydb.add_switch(ev.switch)
 
     @set_ev_cls(event.EventSwitchLeave)
     def _event_switch_leave_handler(self, ev):
-        self.logger.info("Switch deleted: %s", ev.switch)
-        self.toplogydb.delete_switch(ev.switch)
+        self.topologydb.delete_switch(ev.switch)
 
     @set_ev_cls(event.EventLinkAdd)
     def _event_link_add_handler(self, ev):
-        self.logger.info("Link added: %s", ev.link)
-        self.toplogydb.add_link(ev.link)
+        self.topologydb.add_link(ev.link)
 
     @set_ev_cls(event.EventLinkDelete)
     def _event_link_delete_handler(self, ev):
-        self.logger.info("Link deleted: %s", ev.link)
-        self.toplogydb.delete_link(ev.link)
+        self.topologydb.delete_link(ev.link)
 
     @set_ev_cls(event.EventHostAdd)
     def _event_host_add_handler(self, ev):
-        self.logger.info("Host added: %s", ev.host)
-        self.toplogydb.add_host(ev.host)
+        self.topologydb.add_host(ev.host)
 
     def add_flow(self, datapath, in_port, dst, actions):
         ofproto = datapath.ofproto

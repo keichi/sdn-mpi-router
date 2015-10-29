@@ -40,7 +40,8 @@ class TopologyDB(object):
         self.link_deleted(link)
 
     def to_dict(self):
-        switches = [switch.to_dict() for switch in self.switches]
+        switches = [switch.to_dict() for switch in self.switches.values()]
+        hosts = [host.to_dict() for host in self.hosts.values()]
         links = []
         for dst_to_link in self.links.values():
             links.extend(dst_to_link.values())
@@ -48,4 +49,5 @@ class TopologyDB(object):
         return {
             "switches": switches,
             "links": links,
+            "hosts": hosts,
         }
