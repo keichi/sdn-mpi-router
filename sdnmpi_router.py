@@ -17,6 +17,7 @@ from ryu.topology import event, switches
 from util.rank_allocation_db import RankAllocationDB
 from util.switch_fdb import SwitchFDB
 from util.topology_db import TopologyDB
+from protocol.announcement import announcement
 
 
 class SDNMPIRouter(app_manager.RyuApp):
@@ -127,13 +128,14 @@ class SDNMPIRouter(app_manager.RyuApp):
         udp_pkt = pkt.get_protocol(udp.udp)
         if udp_pkt and udp_pkt.dst_port == 61000:
             payload = pkt.protocols[-1]
-            t, = struct.unpack("<i", payload[:4])
-            if t == 0:
-                rank, = struct.unpack("<i", payload[4:8])
+            ann = announcement.parse(payload)
+
+            if ann.type == "LAUNCH":
+                rank = ann.args.rank
                 self.rankdb.add_process(rank, eth.src)
                 self.logger.info("MPI process %s started at %s", rank, eth.src)
-            elif t == 1:
-                rank, = struct.unpack("<i", payload[4:8])
+            elif ann.type == "EXIT":
+                rank = ann.args.rank
                 self.rankdb.delete_prcess(rank)
                 self.logger.info("MPI process %s exited at %s", rank, eth.src)
             return True
