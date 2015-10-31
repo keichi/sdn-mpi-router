@@ -136,6 +136,9 @@ class SDNMPIRouter(app_manager.RyuApp):
                 rank, = struct.unpack("<i", payload[4:8])
                 self.rankdb.delete_prcess(rank)
                 self.logger.info("MPI process %s exited at %s", rank, eth.src)
+            return True
+
+        return False
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -152,8 +155,9 @@ class SDNMPIRouter(app_manager.RyuApp):
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             return
         if eth.dst == BROADCAST_STR:
-            self.broadcast_handler(eth, pkt)
-            return
+            handled = self.broadcast_handler(eth, pkt)
+            if handled:
+                return
 
         dpid = datapath.id
 
