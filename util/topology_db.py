@@ -23,7 +23,7 @@ class TopologyDB(object):
 
     def delete_switch(self, switch):
         del self.switches[switch.dp.id]
-        self.switch_deleted(switch)
+        self.switch_deleted.fire(switch)
 
     def add_link(self, link):
         src_dpid = link.src.dpid
@@ -31,20 +31,21 @@ class TopologyDB(object):
         if src_dpid not in self.links:
             self.links[src_dpid] = {}
         self.links[src_dpid][dst_dpid] = link
-        self.link_added(link)
+        self.link_added.fire(link)
 
     def delete_link(self, link):
         src_dpid = link.src.dpid
         dst_dpid = link.dst.dpid
         del self.links[src_dpid][dst_dpid]
-        self.link_deleted(link)
+        self.link_deleted.fire(link)
 
     def to_dict(self):
         switches = [switch.to_dict() for switch in self.switches.values()]
         hosts = [host.to_dict() for host in self.hosts.values()]
         links = []
         for dst_to_link in self.links.values():
-            links.extend(dst_to_link.values())
+            for link in dst_to_link.values():
+                links.append(link.to_dict())
 
         return {
             "switches": switches,
