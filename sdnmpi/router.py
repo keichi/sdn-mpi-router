@@ -3,7 +3,7 @@ import struct
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
-from ryu.controller.event import EventBase
+from ryu.controller.event import EventBase, EventRequestBase, EventReplyBase
 from ryu.ofproto import ofproto_v1_0
 from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
 from ryu.lib.packet import packet, ethernet, ether_types, udp
@@ -20,8 +20,20 @@ class EventFDBUpdate(EventBase):
         self.port = port
 
 
+class CurrentFDBRequest(EventRequestBase):
+    def __init__(self):
+        super(CurrentFDBRequest, self).__init__()
+        self.dst = "Router"
+
+
+class CurrentFDBReply(EventReplyBase):
+    def __init__(self, dst, fdb):
+        super(CurrentFDBReply, self).__init__(dst)
+        self.fdb = fdb
+
+
 class Router(app_manager.RyuApp):
-    _EVENTS = [EventFDBUpdate]
+    _EVENTS = [EventFDBUpdate, CurrentFDBRequest]
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
@@ -41,8 +53,13 @@ class Router(app_manager.RyuApp):
             flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
         datapath.send_msg(mod)
 
+    @set_ev_cls(CurrentFDBRequest)
+    def _current_fdb_request_handler(self, req):
+        reply = CurrentFDBReply(req.src, self.fdb)
+        self.reply_to_request(req, reply)
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def packet_in_handler(self, ev):
+    def _packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
         ofproto = datapath.ofproto

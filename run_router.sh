@@ -1,3 +1,3 @@
 #!/bin/sh
-ryu-manager --verbose --observe-links sdnmpi.rpc_interface sdnmpi.process
+ryu-manager --verbose --observe-links sdnmpi.rpc_interface sdnmpi.process sdnmpi.topology sdnmpi.router
 

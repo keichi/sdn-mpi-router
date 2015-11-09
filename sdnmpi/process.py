@@ -25,13 +25,27 @@ class EventProcessDelete(EventBase):
 
 class RankResolutionRequest(EventRequestBase):
     def __init__(self, rank):
+        super(RankResolutionRequest, self).__init__()
         self.dst = "ProcessManager"
         self.rank = rank
 
 
 class RankResolutionReply(EventReplyBase):
     def __init__(self, dst, mac):
+        super(RankResolutionReply, self).__init__(dst)
         self.mac = mac
+
+
+class CurrentProcessAllocationRequest(EventRequestBase):
+    def __init__(self):
+        super(CurrentProcessAllocationRequest, self).__init__()
+        self.dst = "ProcessManager"
+
+
+class CurrentProcessAllocationReply(EventReplyBase):
+    def __init__(self, dst, processes):
+        super(CurrentProcessAllocationReply, self).__init__(dst)
+        self.processes = processes
 
 
 class ProcessManager(app_manager.RyuApp):
@@ -55,6 +69,11 @@ class ProcessManager(app_manager.RyuApp):
     @set_ev_cls(RankResolutionRequest)
     def _rank_resolution_handler(self, req):
         reply = RankResolutionReply(req.src, self._rankdb.get_mac(req.rank))
+        self.reply_to_request(req, reply)
+
+    @set_ev_cls(CurrentProcessAllocationRequest)
+    def _current_process_allocation_request(self, req):
+        reply = CurrentProcessAllocationReply(req.src, self._rankdb)
         self.reply_to_request(req, reply)
 
     def _broadcast_handler(self, eth, pkt):
