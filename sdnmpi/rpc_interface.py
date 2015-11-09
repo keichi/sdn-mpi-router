@@ -10,15 +10,18 @@ from ryu.contrib.tinyrpc.exc import InvalidReplyError
 from ryu.controller.handler import set_ev_cls
 
 from process import (CurrentProcessAllocationRequest, EventProcessAdd,
-                     EventProcessDelete)
-from topology import CurrentTopologyRequest
-from router import CurrentFDBRequest, EventFDBUpdate
+                     EventProcessDelete, ProcessManager)
+from topology import CurrentTopologyRequest, TopologyManager
+from router import CurrentFDBRequest, EventFDBUpdate, Router
 
 
 class RPCInterface(RyuApp):
     _CONTEXTS = {
         "wsgi": WSGIApplication,
         "switches": Switches,
+        "process_manager": ProcessManager,
+        "router": Router,
+        "topology_manager": TopologyManager,
     }
 
     def __init__(self, *args, **kwargs):

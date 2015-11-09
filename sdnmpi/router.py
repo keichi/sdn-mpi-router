@@ -9,7 +9,7 @@ from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
 from ryu.lib.packet import packet, ethernet, ether_types, udp
 
 from util.switch_fdb import SwitchFDB
-from process import RankResolutionRequest
+from process import RankResolutionRequest, ProcessManager
 
 
 class EventFDBUpdate(EventBase):
@@ -34,6 +34,9 @@ class CurrentFDBReply(EventReplyBase):
 
 class Router(app_manager.RyuApp):
     _EVENTS = [EventFDBUpdate, CurrentFDBRequest]
+    _CONTEXTS = {
+        "process_manager": ProcessManager,
+    }
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
