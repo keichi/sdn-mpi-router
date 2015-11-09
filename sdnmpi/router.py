@@ -12,7 +12,16 @@ from util.switch_fdb import SwitchFDB
 from process import RankResolutionRequest
 
 
+class EventFDBUpdate(EventBase):
+    def __init__(self, dpid, mac, port):
+        super(EventFDBUpdate, self).__init__()
+        self.dpid = dpid
+        self.mac = mac
+        self.port = port
+
+
 class Router(app_manager.RyuApp):
+    _EVENTS = [EventFDBUpdate]
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
@@ -103,11 +112,3 @@ class Router(app_manager.RyuApp):
             datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
             actions=actions, data=data)
         datapath.send_msg(out)
-
-
-class EventFDBUpdate(EventBase):
-    def __init__(self, dpid, mac, port):
-        super(EventFDBUpdate, self).__init__()
-        self.dpid = dpid
-        self.mac = mac
-        self.port = port

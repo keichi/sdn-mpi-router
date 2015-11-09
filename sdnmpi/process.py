@@ -35,6 +35,7 @@ class RankResolutionReply(EventReplyBase):
 
 
 class ProcessManager(app_manager.RyuApp):
+    _EVENTS = [EventProcessAdd, EventProcessDelete]
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
