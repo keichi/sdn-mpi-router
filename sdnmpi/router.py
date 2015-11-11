@@ -6,7 +6,7 @@ from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
 from ryu.controller.event import EventBase, EventRequestBase, EventReplyBase
 from ryu.ofproto import ofproto_v1_0
 from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
-from ryu.lib.packet import packet, ethernet, ether_types, udp
+from ryu.lib.packet import packet, ethernet, ether_types
 
 from util.switch_fdb import SwitchFDB
 from process import RankResolutionRequest, ProcessManager
@@ -75,10 +75,9 @@ class Router(app_manager.RyuApp):
         # ignore LLDP packet
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             return
+        # ignore broadcast packet (broadcasts are handled by TopologyManager)
         if eth.dst == BROADCAST_STR:
-            udp_pkt = pkt.get_protocol(udp.udp)
-            if udp_pkt and udp_pkt.dst_port == 61000:
-                return
+            return
 
         dpid = datapath.id
 
