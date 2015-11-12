@@ -13,7 +13,8 @@ class RankAllocationDB(object):
         self.process_added.fire(rank, mac)
 
     def delete_prcess(self, rank):
-        del self._rank_to_mac[rank]
+        if rank in self._rank_to_mac:
+            del self._rank_to_mac[rank]
         self.process_deleted.fire(rank)
 
     def get_mac(self, rank):

@@ -33,7 +33,8 @@ class TopologyDB(object):
         self.switch_added.fire(switch)
 
     def delete_switch(self, switch):
-        del self.switches[switch.dp.id]
+        if switch.dp.id in self.switches:
+            del self.switches[switch.dp.id]
         self.update_spanning_tree()
         self.switch_deleted.fire(switch)
 
@@ -49,7 +50,9 @@ class TopologyDB(object):
     def delete_link(self, link):
         src_dpid = link.src.dpid
         dst_dpid = link.dst.dpid
-        del self.links[src_dpid][dst_dpid]
+        if src_dpid in self.links:
+            if dst_dpid in self.links[src_dpid]:
+                del self.links[src_dpid][dst_dpid]
         self.update_spanning_tree()
         self.link_deleted.fire(link)
 
