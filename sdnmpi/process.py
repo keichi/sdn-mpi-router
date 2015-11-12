@@ -5,9 +5,11 @@ from ryu.controller.event import EventBase, EventRequestBase, EventReplyBase
 from ryu.ofproto import ofproto_v1_0
 from ryu.lib.mac import BROADCAST_STR
 from ryu.lib.packet import packet, ethernet, ether_types, udp
+from ryu.lib.packet.ether_types import ETH_TYPE_IP
+from ryu.lib.packet.in_proto import IPPROTO_UDP
 
 from util.rank_allocation_db import RankAllocationDB
-from protocol.announcement import announcement
+from protocol.announcement import announcement, ANNOUNCEMENT_PACKET_LEN
 
 
 class EventProcessAdd(EventBase):
@@ -55,6 +57,25 @@ class ProcessManager(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(ProcessManager, self).__init__(*args, **kwargs)
         self._rankdb = RankAllocationDB()
+
+    @set_ev_cls(ofp_event.EventOFPStateChange, MAIN_DISPATCHER)
+    def _state_change_handler(self, ev):
+        datapath = ev.datapath
+        ofproto = datapath.ofproto
+        ofproto_parser = datapath.ofproto_parser
+
+        match = ofproto_parser.OFPMatch(
+            dl_type=ETH_TYPE_IP,
+            nw_proto=IPPROTO_UDP,
+            tp_dst=61000)
+
+        actions = [ofproto_parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
+
+        mod = datapath.ofproto_parser.OFPFlowMod(
+            datapath=datapath, match=match, cookie=0,
+            command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
+            priority=0xffff, actions=actions)
+        datapath.send_msg(mod)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):

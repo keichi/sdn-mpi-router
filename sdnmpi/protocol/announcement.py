@@ -14,3 +14,5 @@ announcement = Struct(
         SLInt32("rank"),
     ),
 )
+
+ANNOUNCEMENT_PACKET_LEN = announcement.sizeof()
