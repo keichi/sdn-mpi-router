@@ -9,7 +9,7 @@ from ryu.lib.packet.ether_types import ETH_TYPE_IP
 from ryu.lib.packet.in_proto import IPPROTO_UDP
 
 from util.rank_allocation_db import RankAllocationDB
-from protocol.announcement import announcement, ANNOUNCEMENT_PACKET_LEN
+from protocol.announcement import announcement
 
 
 class EventProcessAdd(EventBase):
