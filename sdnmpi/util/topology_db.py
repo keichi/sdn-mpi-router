@@ -98,3 +98,54 @@ class TopologyDB(object):
             self._calculate_spanning_tree(root, disabled_ports, visited)
 
         self.disabled_ports = disabled_ports
+
+    def _find_route(self, src_dpid, dst_dpid):
+        # visited switches
+        visited = set([src_dpid])
+        # intermediate paths
+        paths = [[src_dpid]]
+        while paths:
+            current_path = paths.pop()
+            dpid = current_path[-1]
+            # we have reached the goal
+            if dpid == dst_dpid:
+                return current_path
+            # check if switch has outgoing links
+            if dpid not in self.links:
+                continue
+            # loop through outgoing links
+            for next_dpid, link in self.links[dpid].items():
+                # if the link is connected to an unvisited switch
+                if next_dpid not in visited:
+                    next_path = list(current_path)
+                    next_path.append(next_dpid)
+                    visited.add(next_dpid)
+                    paths.append(next_path)
+        # destination is unreachable
+        return []
+
+    def find_route(self, src_mac, dst_mac):
+        """Find a route between two hosts using depth-first search"""
+        # Check if src host and dst host exist
+        if src_mac not in self.hosts or dst_mac not in self.hosts:
+            return []
+
+        # Check if src switch and dst switch exist
+        src_dpid = self.hosts[src_mac].port.dpid
+        dst_dpid = self.hosts[dst_mac].port.dpid
+        if src_dpid not in self.switches or dst_dpid not in self.switches:
+            return []
+
+        # Perform depth-first search to find a route from src to dst
+        route = self._find_route(src_dpid, dst_dpid)
+        if not route:
+            return []
+
+        fdb = []
+        for idx, dpid in enumerate(route[:-1]):
+            fdb.append((dpid, self.links[dpid][route[idx+1]].src.port_no))
+
+        # Dst switch to dst host
+        fdb.append((dst_dpid, self.hosts[dst_mac].port.port_no))
+
+        return fdb
