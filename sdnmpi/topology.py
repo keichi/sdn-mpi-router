@@ -4,7 +4,7 @@ from ryu.controller.event import EventRequestBase, EventReplyBase
 from ryu.topology import event, switches
 from ryu.controller import ofp_event
 from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
-from ryu.lib.packet import packet, ethernet
+from ryu.lib.packet import packet, ethernet, udp
 
 from util.topology_db import TopologyDB
 
@@ -44,6 +44,18 @@ class TopologyManager(app_manager.RyuApp):
             flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
         datapath.send_msg(mod)
 
+    def _install_multicast_drop(self, datapath, dst):
+        ofproto = datapath.ofproto
+
+        match = datapath.ofproto_parser.OFPMatch(
+            in_port=in_port, dl_dst=haddr_to_bin(dst))
+
+        mod = datapath.ofproto_parser.OFPFlowMod(
+            datapath=datapath, match=match, cookie=0,
+            command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
+            priority=ofproto.OFP_DEFAULT_PRIORITY, actions=[])
+        datapath.send_msg(mod)
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
@@ -54,7 +66,17 @@ class TopologyManager(app_manager.RyuApp):
         dst = eth.dst
         ofproto = datapath.ofproto
 
-        if dst != BROADCAST_STR:
+        # Do not handle IPv6 multicast packets
+        if dst.startswith("33:33"):
+            self._install_multicast_drop(datapath, dst)
+            return
+        # Do not handler unicast packets
+        elif dst != BROADCAST_STR:
+            return
+
+        # Do not handle announcement packets
+        udph = pkt.get_protocol(udp.udp)
+        if udph and udph.dst_port == 61000:
             return
 
         if dpid in self.topologydb.switches:
