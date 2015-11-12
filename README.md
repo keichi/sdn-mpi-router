@@ -9,6 +9,6 @@ framework.
 
 ## Running SDN-MPI Router
 ```
-$ ryu-manager --observe-links sdnmpi_router.py
+$ ./run_router.sh
 ```
 
