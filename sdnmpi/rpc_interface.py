@@ -72,6 +72,7 @@ class RPCInterface(RyuApp):
         self._rpc_broadcall("add_host", ev.host.to_dict())
 
     def _rpc_call(self, rpc_client, func_name, *args):
+        """Perform a RPC on rpc_client"""
         try:
             # one_way option is ignored in Ryu 3.26 :-(
             rpc_server = rpc_client.get_proxy()
@@ -84,6 +85,7 @@ class RPCInterface(RyuApp):
         return True
 
     def _rpc_broadcall(self, func_name, *args):
+        """Perform a RPC on all connected RPC clients"""
         disconnected_clients = []
         for rpc_client in self.rpc_clients:
             success = self._rpc_call(rpc_client, func_name, *args)

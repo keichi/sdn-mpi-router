@@ -57,6 +57,7 @@ class TopologyDB(object):
         self.link_deleted.fire(link)
 
     def to_dict(self):
+        """Convert this object to a JSON-serializable object"""
         switches = [switch.to_dict() for switch in self.switches.values()]
         hosts = [host.to_dict() for host in self.hosts.values()]
         links = []
@@ -100,6 +101,8 @@ class TopologyDB(object):
         self.disabled_ports = disabled_ports
 
     def _find_route(self, src_dpid, dst_dpid):
+        """Find a route between two switches using DFS
+        Returns a list of switches included in the route"""
         # visited switches
         visited = set([src_dpid])
         # intermediate paths
@@ -125,7 +128,8 @@ class TopologyDB(object):
         return []
 
     def find_route(self, src_mac, dst_mac):
-        """Find a route between two hosts using depth-first search"""
+        """Find a route between two hosts using depth-first search
+        Returns a list of tuples (datapath id, output port)"""
         # Check if src host and dst host exist
         if src_mac not in self.hosts or dst_mac not in self.hosts:
             return []

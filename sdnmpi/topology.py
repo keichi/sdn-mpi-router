@@ -47,9 +47,9 @@ class TopologyManager(app_manager.RyuApp):
     def _install_multicast_drop(self, datapath, dst):
         ofproto = datapath.ofproto
 
-        match = datapath.ofproto_parser.OFPMatch(
-            in_port=in_port, dl_dst=haddr_to_bin(dst))
+        match = datapath.ofproto_parser.OFPMatch(dl_dst=haddr_to_bin(dst))
 
+        # Install a flow to drop all packets sent to dst
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
@@ -82,7 +82,9 @@ class TopologyManager(app_manager.RyuApp):
         if dpid in self.topologydb.switches:
             switch = self.topologydb.switches[dpid]
             out_ports = {port.port_no for port in switch.ports}
+            # Exclude ports that are not included in the spanning tree
             out_ports -= self.topologydb.disabled_ports[dpid]
+            # Exclude ingress port
             out_ports -= set([msg.in_port])
         else:
             out_ports = set([ofproto.OFPP_FLOOD])

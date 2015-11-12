@@ -71,6 +71,7 @@ class ProcessManager(app_manager.RyuApp):
 
         actions = [ofproto_parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
 
+        # Install a flow to send all announcement packets to the controller
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
