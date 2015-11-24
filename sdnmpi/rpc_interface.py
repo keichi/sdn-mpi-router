@@ -78,7 +78,7 @@ class RPCInterface(RyuApp):
             rpc_server = rpc_client.get_proxy()
             getattr(rpc_server, func_name)(*args)
         except SocketError:
-            self.logger.debug("WebSocket disconnected: ", rpc_server.ws)
+            self.logger.debug("WebSocket disconnected: %s", rpc_server.ws)
             return False
         except InvalidReplyError as e:
             self.logger.error(e)
