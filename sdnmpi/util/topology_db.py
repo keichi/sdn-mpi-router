@@ -1,6 +1,9 @@
 from collections import defaultdict
 from .signal import Signal
 
+# TODO Should not depend on a specific version of ofproto
+import ryu.ofproto.ofproto_v1_0 as ofproto
+
 
 class TopologyDB(object):
     def __init__(self):
@@ -127,18 +130,36 @@ class TopologyDB(object):
         # destination is unreachable
         return []
 
+    def _mac_to_int(self, mac):
+        return int(mac.replace(":", ""), 16)
+
     def find_route(self, src_mac, dst_mac):
         """Find a route between two hosts using depth-first search
         Returns a list of tuples (datapath id, output port)"""
-        # Check if src host and dst host exist
-        if src_mac not in self.hosts or dst_mac not in self.hosts:
+        # Check if src/dst is a switch local port
+        is_local_src = False
+        is_local_dst = False
+        if self._mac_to_int(src_mac) in self.switches:
+            is_local_src = True
+        if self._mac_to_int(dst_mac) in self.switches:
+            is_local_dst = True
+
+        # Check if src/dst host exist
+        if not is_local_src and src_mac not in self.hosts:
+            return []
+        elif not is_local_dst and dst_mac not in self.hosts:
             return []
 
-        # Check if src switch and dst switch exist
-        src_dpid = self.hosts[src_mac].port.dpid
-        dst_dpid = self.hosts[dst_mac].port.dpid
-        if src_dpid not in self.switches or dst_dpid not in self.switches:
-            return []
+        # Get src/dst edge switches
+        if is_local_src:
+            src_dpid = self._mac_to_int(src_mac)
+        else:
+            src_dpid = self.hosts[src_mac].port.dpid
+
+        if is_local_dst:
+            dst_dpid = self._mac_to_int(dst_mac)
+        else:
+            dst_dpid = self.hosts[dst_mac].port.dpid
 
         # Perform depth-first search to find a route from src to dst
         route = self._find_route(src_dpid, dst_dpid)
@@ -150,6 +171,9 @@ class TopologyDB(object):
             fdb.append((dpid, self.links[dpid][route[idx+1]].src.port_no))
 
         # Dst switch to dst host
-        fdb.append((dst_dpid, self.hosts[dst_mac].port.port_no))
+        if is_local_dst:
+            fdb.append((dst_dpid, ofproto.OFPP_LOCAL))
+        else:
+            fdb.append((dst_dpid, self.hosts[dst_mac].port.port_no))
 
         return fdb
