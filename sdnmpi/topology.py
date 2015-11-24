@@ -21,6 +21,20 @@ class CurrentTopologyReply(EventReplyBase):
         self.topology = topology
 
 
+class FindRouteRequest(EventRequestBase):
+    def __init__(self, src_mac, dst_mac):
+        super(FindRouteRequest, self).__init__()
+        self.dst = "TopologyManager"
+        self.src_mac = src_mac
+        self.dst_mac = dst_mac
+
+
+class FindRouteReply(EventReplyBase):
+    def __init__(self, dst, fdb):
+        super(FindRouteReply, self).__init__(dst)
+        self.fdb = fdb
+
+
 class TopologyManager(app_manager.RyuApp):
     _CONTEXTS = {
         "switches": switches.Switches,
@@ -108,6 +122,12 @@ class TopologyManager(app_manager.RyuApp):
     @set_ev_cls(CurrentTopologyRequest)
     def _current_topology_request_handler(self, req):
         reply = CurrentTopologyReply(req.src, self.topologydb)
+        self.reply_to_request(req, reply)
+
+    @set_ev_cls(FindRouteRequest)
+    def _find_route_request_handler(self, req):
+        fdb = self.topologydb.find_route(req.src_mac, req.dst_mac)
+        reply = FindRouteReply(req.src, fdb)
         self.reply_to_request(req, reply)
 
     @set_ev_cls(event.EventSwitchEnter)
