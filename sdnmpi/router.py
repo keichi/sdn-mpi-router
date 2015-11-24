@@ -107,9 +107,7 @@ class Router(app_manager.RyuApp):
 
         self.logger.info("Packet in %s %s %s %s", dpid, src, dst, msg.in_port)
 
-        print "Finding route from %s to %s" % (src, dst)
         fdb = self.send_request(FindRouteRequest(src, dst)).fdb
-        print "Found route is: %s" % fdb
         # Install rules to all datapaths in path
         if fdb:
             for (dpid, out_port) in fdb:
@@ -142,11 +140,6 @@ class Router(app_manager.RyuApp):
         #         ]
 
         # send packet out message for this packet
-
-        data = None
-        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-            data = msg.data
-
         if fdb:
             actions = [
                 datapath.ofproto_parser.OFPActionOutput(fdb[0][1]),
@@ -155,8 +148,7 @@ class Router(app_manager.RyuApp):
             actions = [
                 datapath.ofproto_parser.OFPActionOutput(ofproto.OFPP_FLOOD),
             ]
-
         out = datapath.ofproto_parser.OFPPacketOut(
-            datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
-            actions=actions, data=data)
+            datapath=datapath, in_port=msg.in_port, actions=actions,
+            buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
         datapath.send_msg(out)
