@@ -1,4 +1,4 @@
-#  import struct
+import struct
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -10,8 +10,7 @@ from ryu.lib.packet import packet, ethernet, ether_types
 
 from util.switch_fdb import SwitchFDB
 from topology import FindRouteRequest
-#  from process import RankResolutionRequest, ProcessManager
-from process import ProcessManager
+from process import RankResolutionRequest, ProcessManager
 
 
 class EventFDBUpdate(EventBase):
@@ -46,15 +45,13 @@ class Router(app_manager.RyuApp):
         self.fdb = SwitchFDB()
         self.dps = {}
 
-    def _add_flow(self, datapath, src, dst, out_port):
+    def _add_flow(self, datapath, src, dst, out_port, actions=[]):
         ofproto = datapath.ofproto
 
         match = datapath.ofproto_parser.OFPMatch(
             dl_src=haddr_to_bin(src), dl_dst=haddr_to_bin(dst))
 
-        actions = [
-            datapath.ofproto_parser.OFPActionOutput(out_port),
-        ]
+        actions = actions + [datapath.ofproto_parser.OFPActionOutput(out_port)]
 
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
@@ -87,6 +84,7 @@ class Router(app_manager.RyuApp):
         msg = ev.msg
         datapath = msg.datapath
         ofproto = datapath.ofproto
+        ofproto_parser = datapath.ofproto_parser
 
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
@@ -105,7 +103,11 @@ class Router(app_manager.RyuApp):
 
         dpid = datapath.id
 
-        self.logger.info("Packet in %s %s %s %s", dpid, src, dst, msg.in_port)
+        self.logger.info("Packet in at %s (%s) %s -> %s", dpid, msg.in_port,
+                         src, dst)
+
+        if dst.startswith("02:00"):
+            return self._mpi_packet_in_handler(ev)
 
         fdb = self.send_request(FindRouteRequest(src, dst)).fdb
         # Install rules to all datapaths in path
@@ -115,40 +117,62 @@ class Router(app_manager.RyuApp):
                     datapath = self.dps[dpid]
                     self._add_flow(datapath, src, dst, out_port)
 
-        # if dst.startswith("02:00"):
-        #     bin_dst = haddr_to_bin(dst)
-        #     src_rank = struct.unpack("<h", bin_dst[2:4])[0]
-        #     dst_rank = struct.unpack("<h", bin_dst[4:6])[0]
-
-        #     self.logger.info("SDNMPI communication from rank %s to rank %s",
-        #                      src_rank, dst_rank)
-
-        #     reply = self.send_request(RankResolutionRequest(dst_rank))
-        #     dst_mac = reply.mac
-        #     out_port = self.fdb.get_port(dpid, dst_mac)
-        #     if out_port is not None:
-        #         actions = [
-        #             datapath.ofproto_parser.OFPActionSetDlDst(
-        #                 haddr_to_bin(dst_mac)
-        #             ),
-        #             datapath.ofproto_parser.OFPActionOutput(out_port),
-        #         ]
-        #     else:
-        #         out_port = ofproto.OFPP_FLOOD
-        #         actions = [
-        #             datapath.ofproto_parser.OFPActionOutput(out_port),
-        #         ]
-
         # send packet out message for this packet
         if fdb:
             actions = [
-                datapath.ofproto_parser.OFPActionOutput(fdb[0][1]),
+                ofproto_parser.OFPActionOutput(fdb[0][1]),
             ]
         else:
             actions = [
-                datapath.ofproto_parser.OFPActionOutput(ofproto.OFPP_FLOOD),
+                ofproto_parser.OFPActionOutput(ofproto.OFPP_FLOOD),
             ]
-        out = datapath.ofproto_parser.OFPPacketOut(
+        out = ofproto_parser.OFPPacketOut(
+            datapath=datapath, in_port=msg.in_port, actions=actions,
+            buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
+        datapath.send_msg(out)
+
+    def _mpi_packet_in_handler(self, ev):
+        msg = ev.msg
+        datapath = msg.datapath
+        ofproto = datapath.ofproto
+        ofproto_parser = datapath.ofproto_parser
+
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        dst = eth.dst
+        src = eth.src
+
+        bin_dst = haddr_to_bin(dst)
+        src_rank = struct.unpack("<h", bin_dst[2:4])[0]
+        dst_rank = struct.unpack("<h", bin_dst[4:6])[0]
+
+        self.logger.info("SDNMPI communication from rank %s to rank %s",
+                         src_rank, dst_rank)
+
+        # True MAC address of dst, resolved using ProcessManager
+        true_dst = self.send_request(RankResolutionRequest(dst_rank)).mac
+
+        fdb = self.send_request(FindRouteRequest(src, true_dst)).fdb
+        if not fdb:
+            return
+
+        for idx, (dpid, out_port) in enumerate(fdb):
+            if dpid in self.dps:
+                datapath = self.dps[dpid]
+                if idx == len(fdb) - 1:
+                    actions = [
+                        datapath.ofproto_parser.OFPActionSetDlDst(
+                            haddr_to_bin(true_dst)
+                        ),
+                    ]
+                    self._add_flow(datapath, src, dst, out_port, actions)
+                else:
+                    self._add_flow(datapath, src, dst, out_port)
+
+        actions = [
+            ofproto_parser.OFPActionOutput(fdb[0][1]),
+        ]
+        out = ofproto_parser.OFPPacketOut(
             datapath=datapath, in_port=msg.in_port, actions=actions,
             buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
         datapath.send_msg(out)
