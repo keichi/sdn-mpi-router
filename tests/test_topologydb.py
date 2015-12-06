@@ -4,10 +4,10 @@ from nose.tools import eq_
 from tests.mock import MockPort, MockLink, MockHost, MockSwitch
 from sdnmpi.util.topology_db import TopologyDB
 
-MAC1 = "00:00:00:00:00:01"
-MAC2 = "00:00:00:00:00:02"
-MAC3 = "00:00:00:00:00:03"
-MAC4 = "00:00:00:00:00:04"
+MAC1 = "02:00:00:00:00:01"
+MAC2 = "02:00:00:00:00:02"
+MAC3 = "02:00:00:00:00:03"
+MAC4 = "02:00:00:00:00:04"
 
 
 class TopologyDBTestCase(TestCase):
