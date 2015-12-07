@@ -3,7 +3,7 @@ from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
 from ryu.controller.event import EventRequestBase, EventReplyBase
 from ryu.topology import event, switches
 from ryu.controller import ofp_event
-from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
+from ryu.lib.mac import haddr_to_bin, BROADCAST_STR, BROADCAST
 from ryu.lib.packet import packet, ethernet, udp
 
 from util.topology_db import TopologyDB
@@ -70,15 +70,30 @@ class TopologyManager(app_manager.RyuApp):
             priority=ofproto.OFP_DEFAULT_PRIORITY, actions=[])
         datapath.send_msg(mod)
 
+    @set_ev_cls(ofp_event.EventOFPStateChange, MAIN_DISPATCHER)
+    def _state_change_handler(self, ev):
+        datapath = ev.datapath
+        ofproto = datapath.ofproto
+        ofproto_parser = datapath.ofproto_parser
+
+        match = ofproto_parser.OFPMatch(dl_dst=BROADCAST)
+        actions = [ofproto_parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
+
+        # Install a flow to send all broadcast packets to the controller
+        mod = datapath.ofproto_parser.OFPFlowMod(
+            datapath=datapath, match=match, cookie=0,
+            command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
+            priority=0xffff, actions=actions)
+        datapath.send_msg(mod)
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
-        dpid = datapath.id
+        ofproto = datapath.ofproto
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
         dst = eth.dst
-        ofproto = datapath.ofproto
 
         # Do not handle IPv6 multicast packets
         if dst.startswith("33:33"):
@@ -93,31 +108,20 @@ class TopologyManager(app_manager.RyuApp):
         if udph and udph.dst_port == 61000:
             return
 
-        if dpid in self.topologydb.switches:
-            switch = self.topologydb.switches[dpid]
-            out_ports = {port.port_no for port in switch.ports}
-            # Exclude ports that are not included in the spanning tree
-            out_ports -= self.topologydb.disabled_ports[dpid]
-            # Exclude ingress port
-            out_ports -= set([msg.in_port])
-        else:
-            out_ports = set([ofproto.OFPP_FLOOD])
+        for switch in self.topologydb.switches.values():
+            out_ports = []
+            for port in switch.ports:
+                for host in self.topologydb.hosts.values():
+                    if host.port == port:
+                        out_ports.append(port)
 
-        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)
-                   for out_port in out_ports]
-
-        # install a flow to avoid packet_in next time
-        if ofproto.OFPP_FLOOD not in out_ports:
-            self._add_flow(datapath, msg.in_port, dst, actions)
-
-        # send packet out message for this packet
-        data = None
-        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-            data = msg.data
-        out = datapath.ofproto_parser.OFPPacketOut(
-            datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
-            actions=actions, data=data)
-        datapath.send_msg(out)
+            actions = [datapath.ofproto_parser.OFPActionOutput(port.port_no)
+                       for port in out_ports]
+            out = datapath.ofproto_parser.OFPPacketOut(
+                datapath=datapath, in_port=msg.in_port,
+                buffer_id=ofproto.OFP_NO_BUFFER, actions=actions,
+                data=msg.data)
+            datapath.send_msg(out)
 
     @set_ev_cls(CurrentTopologyRequest)
     def _current_topology_request_handler(self, req):
