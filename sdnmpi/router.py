@@ -127,7 +127,7 @@ class Router(app_manager.RyuApp):
                 ofproto_parser.OFPActionOutput(ofproto.OFPP_FLOOD),
             ]
         out = ofproto_parser.OFPPacketOut(
-            datapath=datapath, in_port=msg.in_port, actions=actions,
+            datapath=datapath, in_port=ofproto.OFPP_NONE, actions=actions,
             buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
         datapath.send_msg(out)
 
