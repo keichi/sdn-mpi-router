@@ -9,7 +9,7 @@ from ryu.lib.mac import haddr_to_bin, BROADCAST_STR
 from ryu.lib.packet import packet, ethernet, ether_types
 
 from util.switch_fdb import SwitchFDB
-from topology import FindRouteRequest
+from topology import FindRouteRequest, BroadcastRequest
 from process import RankResolutionRequest, ProcessManager
 
 
@@ -117,19 +117,17 @@ class Router(app_manager.RyuApp):
                     datapath = self.dps[dpid]
                     self._add_flow(datapath, src, dst, out_port)
 
-        # send packet out message for this packet
         if fdb:
             actions = [
                 ofproto_parser.OFPActionOutput(fdb[0][1]),
             ]
+            out = ofproto_parser.OFPPacketOut(
+                datapath=datapath, in_port=ofproto.OFPP_NONE, actions=actions,
+                buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
+            datapath.send_msg(out)
         else:
-            actions = [
-                ofproto_parser.OFPActionOutput(ofproto.OFPP_FLOOD),
-            ]
-        out = ofproto_parser.OFPPacketOut(
-            datapath=datapath, in_port=ofproto.OFPP_NONE, actions=actions,
-            buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
-        datapath.send_msg(out)
+            req = BroadcastRequest(msg.data, dpid, msg.in_port)
+            self.send_request(req)
 
     def _mpi_packet_in_handler(self, ev):
         msg = ev.msg

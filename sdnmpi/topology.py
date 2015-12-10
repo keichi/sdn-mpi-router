@@ -35,11 +35,20 @@ class FindRouteReply(EventReplyBase):
         self.fdb = fdb
 
 
+class BroadcastRequest(EventRequestBase):
+    def __init__(self, data, src_dpid, src_in_port):
+        super(BroadcastRequest, self).__init__()
+        self.dst = "TopologyManager"
+        self.data = data
+        self.src_dpid = src_dpid
+        self.src_in_port = src_in_port
+
+
 class TopologyManager(app_manager.RyuApp):
     _CONTEXTS = {
         "switches": switches.Switches,
     }
-    _EVENTS = [CurrentTopologyRequest]
+    _EVENTS = [CurrentTopologyRequest, BroadcastRequest]
 
     def __init__(self, *args, **kwargs):
         super(TopologyManager, self).__init__(*args, **kwargs)
@@ -67,7 +76,7 @@ class TopologyManager(app_manager.RyuApp):
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-            priority=ofproto.OFP_DEFAULT_PRIORITY, actions=[])
+            priority=0xffff, actions=[])
         datapath.send_msg(mod)
 
     @set_ev_cls(ofp_event.EventOFPStateChange, MAIN_DISPATCHER)
@@ -83,14 +92,13 @@ class TopologyManager(app_manager.RyuApp):
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-            priority=0xffff, actions=actions)
+            priority=0xfffe, actions=actions)
         datapath.send_msg(mod)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
-        ofproto = datapath.ofproto
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
         dst = eth.dst
@@ -108,20 +116,7 @@ class TopologyManager(app_manager.RyuApp):
         if udph and udph.dst_port == 61000:
             return
 
-        for switch in self.topologydb.switches.values():
-            out_ports = []
-            for port in switch.ports:
-                for host in self.topologydb.hosts.values():
-                    if host.port == port:
-                        out_ports.append(port)
-
-            actions = [datapath.ofproto_parser.OFPActionOutput(port.port_no)
-                       for port in out_ports]
-            out = datapath.ofproto_parser.OFPPacketOut(
-                datapath=datapath, in_port=msg.in_port,
-                buffer_id=ofproto.OFP_NO_BUFFER, actions=actions,
-                data=msg.data)
-            datapath.send_msg(out)
+        self._do_broadcast(msg.data)
 
     @set_ev_cls(CurrentTopologyRequest)
     def _current_topology_request_handler(self, req):
@@ -133,6 +128,34 @@ class TopologyManager(app_manager.RyuApp):
         fdb = self.topologydb.find_route(req.src_mac, req.dst_mac)
         reply = FindRouteReply(req.src, fdb)
         self.reply_to_request(req, reply)
+
+    def _is_edge_port(self, port):
+        for dpid_to_link in self.topologydb.links.values():
+            for link in dpid_to_link.values():
+                if port == link.src or port == link.dst:
+                    return False
+        return True
+
+    def _do_broadcast(self, data):
+        for switch in self.topologydb.switches.values():
+            datapath = switch.dp
+            ofproto = datapath.ofproto
+            ofproto_parser = datapath.ofproto_parser
+
+            actions = [ofproto_parser.OFPActionOutput(port.port_no)
+                       for port in switch.ports if self._is_edge_port(port)]
+            actions.append(ofproto_parser.OFPActionOutput(ofproto.OFPP_LOCAL))
+
+            out = ofproto_parser.OFPPacketOut(
+                datapath=datapath, in_port=ofproto.OFPP_NONE,
+                buffer_id=ofproto.OFP_NO_BUFFER, actions=actions,
+                data=data)
+            datapath.send_msg(out)
+
+    @set_ev_cls(BroadcastRequest)
+    def _broadcast_request_handler(self, req):
+        self._do_broadcast(req.data)
+        self.reply_to_request(req, EventReplyBase(req.src))
 
     @set_ev_cls(event.EventSwitchEnter)
     def _event_switch_enter_handler(self, ev):
