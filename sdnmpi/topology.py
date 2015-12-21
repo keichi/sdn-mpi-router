@@ -116,7 +116,7 @@ class TopologyManager(app_manager.RyuApp):
         if udph and udph.dst_port == 61000:
             return
 
-        self._do_broadcast(msg.data)
+        self._do_broadcast(msg.data, datapath.id, msg.in_port)
 
     @set_ev_cls(CurrentTopologyRequest)
     def _current_topology_request_handler(self, req):
@@ -136,15 +136,21 @@ class TopologyManager(app_manager.RyuApp):
                     return False
         return True
 
-    def _do_broadcast(self, data):
+    def _do_broadcast(self, data, dpid, in_port):
         for switch in self.topologydb.switches.values():
             datapath = switch.dp
             ofproto = datapath.ofproto
             ofproto_parser = datapath.ofproto_parser
 
+            # Only broadcast to non-reserved switch-to-host ports
+            ports = [p for p in switch.ports if self._is_edge_port(p)
+                     and not p.is_reserved()]
+            # Exclude ingress port
+            if switch.dp.id == dpid:
+                ports = [p for p in switch.ports if p.port_no != in_port]
+
             actions = [ofproto_parser.OFPActionOutput(port.port_no)
-                       for port in switch.ports if self._is_edge_port(port)]
-            actions.append(ofproto_parser.OFPActionOutput(ofproto.OFPP_LOCAL))
+                       for port in ports]
 
             out = ofproto_parser.OFPPacketOut(
                 datapath=datapath, in_port=ofproto.OFPP_NONE,
@@ -154,7 +160,7 @@ class TopologyManager(app_manager.RyuApp):
 
     @set_ev_cls(BroadcastRequest)
     def _broadcast_request_handler(self, req):
-        self._do_broadcast(req.data)
+        self._do_broadcast(req.data, req.src_dpid, req.src_in_port)
         self.reply_to_request(req, EventReplyBase(req.src))
 
     @set_ev_cls(event.EventSwitchEnter)
