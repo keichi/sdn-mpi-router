@@ -147,7 +147,7 @@ class TopologyManager(app_manager.RyuApp):
                      and not p.is_reserved()]
             # Exclude ingress port
             if switch.dp.id == dpid:
-                ports = [p for p in switch.ports if p.port_no != in_port]
+                ports = [p for p in ports if p.port_no != in_port]
 
             actions = [ofproto_parser.OFPActionOutput(port.port_no)
                        for port in ports]
