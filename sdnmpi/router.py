@@ -114,13 +114,10 @@ class Router(app_manager.RyuApp):
         if fdb:
             for (dpid, out_port) in fdb:
                 if dpid in self.dps:
-                    datapath = self.dps[dpid]
-                    self._add_flow(datapath, src, dst, out_port)
+                    self._add_flow(self.dps[dpid], src, dst, out_port)
 
         if fdb:
-            actions = [
-                ofproto_parser.OFPActionOutput(fdb[-1][1]),
-            ]
+            actions = [ofproto_parser.OFPActionOutput(fdb[0][1])]
             out = ofproto_parser.OFPPacketOut(
                 datapath=datapath, in_port=ofproto.OFPP_NONE, actions=actions,
                 buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
