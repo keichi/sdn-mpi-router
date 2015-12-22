@@ -81,6 +81,11 @@ class Router(app_manager.RyuApp):
 
     def _add_flows_for_path(self, fdb, src, dst):
         for (dpid, out_port) in fdb:
+            if self.fdb.exists(dpid, src, dst):
+                continue
+            else:
+                self.fdb.update(dpid, src, dst, out_port)
+
             if dpid in self.dps:
                 datapath = self.dps[dpid]
                 self._add_flow(datapath, src, dst, out_port)
