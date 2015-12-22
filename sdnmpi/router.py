@@ -119,7 +119,7 @@ class Router(app_manager.RyuApp):
 
         if fdb:
             actions = [
-                ofproto_parser.OFPActionOutput(fdb[0][1]),
+                ofproto_parser.OFPActionOutput(fdb[-1][1]),
             ]
             out = ofproto_parser.OFPPacketOut(
                 datapath=datapath, in_port=ofproto.OFPP_NONE, actions=actions,
