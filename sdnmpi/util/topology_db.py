@@ -1,5 +1,3 @@
-from .signal import Signal
-
 # TODO Should not depend on a specific version of ofproto
 import ryu.ofproto.ofproto_v1_0 as ofproto
 
@@ -16,24 +14,15 @@ class TopologyDB(object):
         # MAC address -> ryu.topology.switches.Host
         self.hosts = {}
 
-        self.switch_added = Signal()
-        self.switch_deleted = Signal()
-        self.link_added = Signal()
-        self.link_deleted = Signal()
-        self.host_added = Signal()
-
     def add_host(self, host):
         self.hosts[host.mac] = host
-        self.host_added.fire(host)
 
     def add_switch(self, switch):
         self.switches[switch.dp.id] = switch
-        self.switch_added.fire(switch)
 
     def delete_switch(self, switch):
         if switch.dp.id in self.switches:
             del self.switches[switch.dp.id]
-        self.switch_deleted.fire(switch)
 
     def add_link(self, link):
         src_dpid = link.src.dpid
@@ -41,7 +30,6 @@ class TopologyDB(object):
         if src_dpid not in self.links:
             self.links[src_dpid] = {}
         self.links[src_dpid][dst_dpid] = link
-        self.link_added.fire(link)
 
     def delete_link(self, link):
         src_dpid = link.src.dpid
@@ -49,7 +37,6 @@ class TopologyDB(object):
         if src_dpid in self.links:
             if dst_dpid in self.links[src_dpid]:
                 del self.links[src_dpid][dst_dpid]
-        self.link_deleted.fire(link)
 
     def to_dict(self):
         """Convert this object to a JSON-serializable object"""
