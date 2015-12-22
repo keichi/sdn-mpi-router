@@ -90,17 +90,19 @@ class Router(app_manager.RyuApp):
                 datapath = self.dps[dpid]
                 self._add_flow(datapath, src, dst, out_port)
 
-    def _send_packet_out(self, fdb, datapath, data):
+    def _send_packet_out(self, fdb, datapath, data, buffer_id):
         ofproto = datapath.ofproto
         ofproto_parser = datapath.ofproto_parser
 
+        if buffer_id != ofproto.OFP_NO_BUFFER:
+            data = None
+
         for (dpid, out_port) in fdb:
             if datapath.id == dpid:
-                # TODO Use buffer if available
                 actions = [ofproto_parser.OFPActionOutput(out_port)]
                 out = ofproto_parser.OFPPacketOut(
                     datapath=datapath, in_port=ofproto.OFPP_NONE,
-                    actions=actions, buffer_id=ofproto.OFP_NO_BUFFER,
+                    actions=actions, buffer_id=buffer_id,
                     data=data)
                 datapath.send_msg(out)
 
@@ -136,7 +138,7 @@ class Router(app_manager.RyuApp):
             # Install rules to all datapaths in path
             self._add_flows_for_path(fdb, src, dst)
             # Output packet from current switch
-            self._send_packet_out(fdb, datapath, msg.data)
+            self._send_packet_out(fdb, datapath, msg.data, msg.buffer_id)
         else:
             req = BroadcastRequest(msg.data, datapath.id, msg.in_port)
             self.send_request(req)
