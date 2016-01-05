@@ -82,14 +82,17 @@ class Router(app_manager.RyuApp):
 
     def _add_flows_for_path(self, fdb, src, dst):
         for (dpid, out_port) in fdb:
+            # Check if a flow for this packet has already been installed
             if self.fdb.exists(dpid, src, dst):
                 continue
-            else:
-                self.fdb.update(dpid, src, dst, out_port)
-                self.send_event_to_observers(
-                    EventFDBUpdate(dpid, src, dst, out_port)
-                )
 
+            # Update FDB and notify to observers
+            self.fdb.update(dpid, src, dst, out_port)
+            self.send_event_to_observers(
+                EventFDBUpdate(dpid, src, dst, out_port)
+            )
+
+            # If a datapath having dpid is connected to controller
             if dpid in self.dps:
                 datapath = self.dps[dpid]
                 self._add_flow(datapath, src, dst, out_port)
@@ -98,10 +101,12 @@ class Router(app_manager.RyuApp):
         ofproto = datapath.ofproto
         ofproto_parser = datapath.ofproto_parser
 
+        # If the packet is buffered, do not re-send packet with packet-out
         if buffer_id != ofproto.OFP_NO_BUFFER:
             data = None
 
         for (dpid, out_port) in fdb:
+            # If dpid is the datapath that caused packet-in
             if datapath.id == dpid:
                 actions = [ofproto_parser.OFPActionOutput(out_port)]
                 out = ofproto_parser.OFPPacketOut(
@@ -109,6 +114,7 @@ class Router(app_manager.RyuApp):
                     actions=actions, buffer_id=buffer_id,
                     data=data)
                 datapath.send_msg(out)
+                break
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
