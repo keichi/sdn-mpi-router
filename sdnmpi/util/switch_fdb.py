@@ -15,4 +15,18 @@ class SwitchFDB(object):
         return False
 
     def to_dict(self):
-        return self._mac_to_port
+        switches = []
+        for dpid, fdb in self._dpid_to_fdb.items():
+            switch_fdb = []
+            for (src, dst), out_port in fdb.items():
+                switch_fdb.append({
+                    "src": src,
+                    "dst": dst,
+                    "out_port": out_port,
+                })
+            switches.append({
+                "dpid": dpid,
+                "fdb": switch_fdb,
+            })
+
+        return switches

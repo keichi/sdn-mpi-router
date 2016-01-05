@@ -49,7 +49,7 @@ class RPCInterface(RyuApp):
 
     @set_ev_cls(EventFDBUpdate)
     def _event_fdb_update_handler(self, ev):
-        self._rpc_broadcall("update_fdb", ev.dpid, ev.mac, ev.port)
+        self._rpc_broadcall("update_fdb", ev.dpid, ev.src, ev.dst, ev.port)
 
     @set_ev_cls(EventSwitchEnter)
     def _event_switch_enter_handler(self, ev):

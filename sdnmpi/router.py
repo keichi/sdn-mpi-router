@@ -14,10 +14,11 @@ from process import RankResolutionRequest, ProcessManager
 
 
 class EventFDBUpdate(EventBase):
-    def __init__(self, dpid, mac, port):
+    def __init__(self, dpid, src, dst, port):
         super(EventFDBUpdate, self).__init__()
         self.dpid = dpid
-        self.mac = mac
+        self.src = src
+        self.dst = dst
         self.port = port
 
 
@@ -85,6 +86,9 @@ class Router(app_manager.RyuApp):
                 continue
             else:
                 self.fdb.update(dpid, src, dst, out_port)
+                self.send_event_to_observers(
+                    EventFDBUpdate(dpid, src, dst, out_port)
+                )
 
             if dpid in self.dps:
                 datapath = self.dps[dpid]
