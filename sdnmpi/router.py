@@ -80,8 +80,8 @@ class Router(app_manager.RyuApp):
             if dp.id in self.dps:
                 del self.dps[dp.id]
 
-    def _add_flows_for_path(self, fdb, src, dst):
-        for (dpid, out_port) in fdb:
+    def _add_flows_for_path(self, fdb, src, dst, true_dst=None):
+        for (idx, (dpid, out_port)) in enumerate(fdb):
             # Check if a flow for this packet has already been installed
             if self.fdb.exists(dpid, src, dst):
                 continue
@@ -95,7 +95,13 @@ class Router(app_manager.RyuApp):
             # If a datapath having dpid is connected to controller
             if dpid in self.dps:
                 datapath = self.dps[dpid]
-                self._add_flow(datapath, src, dst, out_port)
+                if true_dst and idx == len(fdb) - 1:
+                    actions = [datapath.ofproto_parser.OFPActionSetDlDst(
+                        haddr_to_bin(true_dst)
+                    )]
+                    self._add_flow(datapath, src, dst, out_port, actions)
+                else:
+                    self._add_flow(datapath, src, dst, out_port)
 
     def _send_packet_out(self, fdb, datapath, data, buffer_id):
         ofproto = datapath.ofproto
@@ -156,8 +162,6 @@ class Router(app_manager.RyuApp):
     def _mpi_packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
-        ofproto = datapath.ofproto
-        ofproto_parser = datapath.ofproto_parser
 
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
@@ -173,28 +177,13 @@ class Router(app_manager.RyuApp):
 
         # True MAC address of dst, resolved using ProcessManager
         true_dst = self.send_request(RankResolutionRequest(dst_rank)).mac
-
-        fdb = self.send_request(FindRouteRequest(src, true_dst)).fdb
-        if not fdb:
+        if not true_dst:
             return
 
-        for idx, (dpid, out_port) in enumerate(fdb):
-            if dpid in self.dps:
-                datapath = self.dps[dpid]
-                if idx == len(fdb) - 1:
-                    actions = [
-                        datapath.ofproto_parser.OFPActionSetDlDst(
-                            haddr_to_bin(true_dst)
-                        ),
-                    ]
-                    self._add_flow(datapath, src, dst, out_port, actions)
-                else:
-                    self._add_flow(datapath, src, dst, out_port)
+        fdb = self.send_request(FindRouteRequest(src, true_dst)).fdb
 
-        actions = [
-            ofproto_parser.OFPActionOutput(fdb[0][1]),
-        ]
-        out = ofproto_parser.OFPPacketOut(
-            datapath=datapath, in_port=msg.in_port, actions=actions,
-            buffer_id=ofproto.OFP_NO_BUFFER, data=msg.data)
-        datapath.send_msg(out)
+        if fdb:
+            # Install rules to all datapaths in path
+            self._add_flows_for_path(fdb, src, dst, true_dst)
+            # Output packet from current switch
+            self._send_packet_out(fdb, datapath, msg.data, msg.buffer_id)
