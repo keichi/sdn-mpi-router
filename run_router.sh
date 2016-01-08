@@ -1,3 +1,3 @@
 #!/bin/sh
-ryu-manager --verbose --observe-links --noexplicit-drop sdnmpi.rpc_interface
+ryu-manager --observe-links --noexplicit-drop --log-config-file=logging.ini sdnmpi.rpc_interface
 
