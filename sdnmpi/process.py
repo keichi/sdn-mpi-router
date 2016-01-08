@@ -101,7 +101,6 @@ class ProcessManager(app_manager.RyuApp):
     def _broadcast_handler(self, eth, pkt):
         udp_pkt = pkt.get_protocol(udp.udp)
         if udp_pkt and udp_pkt.dst_port == 61000:
-            print pkt
             payload = pkt.protocols[-1]
             ann = announcement.parse(payload)
 
