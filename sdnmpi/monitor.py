@@ -10,6 +10,8 @@ from ryu.lib import hub
 class Monitor(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
+    MONITOR_INTERVAL = 1
+
     def __init__(self, *args, **kwargs):
         super(Monitor, self).__init__(*args, **kwargs)
         self.datapaths = {}
@@ -18,7 +20,6 @@ class Monitor(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPStateChange,
                 [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
-        print "hoge"
         datapath = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             if datapath.id not in self.datapaths:
@@ -32,7 +33,7 @@ class Monitor(app_manager.RyuApp):
         while True:
             for datapath in self.datapaths.values():
                 self._request_stats(datapath)
-            hub.sleep(10)
+            hub.sleep(self.MONITOR_INTERVAL)
 
     def _request_stats(self, datapath):
         self.logger.debug("Sending port stats request to: %016x", datapath.id)
