@@ -1,10 +1,21 @@
 from operator import attrgetter
+import time
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, DEAD_DISPATCHER, set_ev_cls
 from ryu.ofproto import ofproto_v1_0
 from ryu.lib import hub
+
+
+class PortStats(object):
+    def __init__(self, timestamp):
+        super(PortStats, self).__init__()
+        self.timestamp = timestamp
+        self.rx_packets = 0
+        self.rx_bytes = 0
+        self.tx_packets = 0
+        self.tx_bytes = 0
 
 
 class Monitor(app_manager.RyuApp):
@@ -14,7 +25,10 @@ class Monitor(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(Monitor, self).__init__(*args, **kwargs)
+        # DPID -> Datapath
         self.datapaths = {}
+        # DPID -> Port Number -> PortStats
+        self.datapath_stats = {}
         self.monitor_thread = hub.spawn(self._monitor)
 
     @set_ev_cls(ofp_event.EventOFPStateChange,
@@ -24,9 +38,11 @@ class Monitor(app_manager.RyuApp):
         if ev.state == MAIN_DISPATCHER:
             if datapath.id not in self.datapaths:
                 self.datapaths[datapath.id] = datapath
+                self.datapath_stats[datapath.id] = {}
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 del self.datapaths[datapath.id]
+                del self.datapath_stats[datapath.id]
 
     def _monitor(self):
         self.logger.debug("Starting monitor thread")
@@ -45,9 +61,34 @@ class Monitor(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
+        dpid = ev.msg.datapath.id
         body = ev.msg.body
+
         for stat in sorted(body, key=attrgetter("port_no")):
-            self.logger.info('%016x %8x %8d %8d %8d %8d %8d %8d',
-                             ev.msg.datapath.id, stat.port_no,
-                             stat.rx_packets, stat.rx_bytes, stat.rx_errors,
-                             stat.tx_packets, stat.tx_bytes, stat.tx_errors)
+            current_timestamp = time.time()
+
+            if stat.port_no not in self.datapath_stats[dpid]:
+                last_stat = PortStats(current_timestamp)
+                last_stat.rx_packets = stat.rx_packets
+                last_stat.rx_bytes = stat.rx_bytes
+                last_stat.tx_packets = stat.tx_packets
+                last_stat.tx_bytes = stat.tx_bytes
+                self.datapath_stats[dpid][stat.port_no] = last_stat
+                continue
+
+            last_stat = self.datapath_stats[dpid][stat.port_no]
+            time_delta = current_timestamp - last_stat.timestamp
+
+            rx_pps = (stat.rx_packets - last_stat.rx_packets) / time_delta
+            rx_bps = (stat.rx_bytes - last_stat.rx_bytes) / time_delta
+            tx_pps = (stat.tx_packets - last_stat.tx_packets) / time_delta
+            tx_bps = (stat.tx_bytes - last_stat.tx_bytes) / time_delta
+
+            self.logger.info('%016x\t%d\t%d\t%d\t%d\t%d', dpid, stat.port_no,
+                             rx_pps, rx_bps, tx_pps, tx_bps)
+
+            last_stat.timestamp = current_timestamp
+            last_stat.rx_packets = stat.rx_packets
+            last_stat.rx_bytes = stat.rx_bytes
+            last_stat.tx_packets = stat.tx_packets
+            last_stat.tx_bytes = stat.tx_bytes
