@@ -70,7 +70,7 @@ class TopologyDB(object):
             if dpid not in self.links:
                 continue
             # loop through outgoing links
-            for next_dpid, link in self.links[dpid].items():
+            for next_dpid in sorted(self.links[dpid].keys()):
                 # if the link is connected to an unvisited switch
                 if next_dpid not in visited:
                     next_path = list(current_path)
