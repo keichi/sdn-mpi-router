@@ -142,7 +142,7 @@ class Router(app_manager.RyuApp):
         if dst.startswith("33:33"):
             return
         # Handle MPI packets
-        if dst.startswith("02:00"):
+        if self._is_sdn_mpi_addr(dst):
             return self._mpi_packet_in_handler(ev)
 
         self.logger.info("Packet in at %s (%s) %s -> %s", datapath.id,
@@ -159,6 +159,10 @@ class Router(app_manager.RyuApp):
             req = BroadcastRequest(msg.data, datapath.id, msg.in_port)
             self.send_request(req)
 
+    def _is_sdn_mpi_addr(self, mac):
+        mac_bin = haddr_to_bin(mac)
+        return ord(mac_bin[0]) & 0x02
+
     def _mpi_packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
@@ -169,11 +173,13 @@ class Router(app_manager.RyuApp):
         src = eth.src
 
         bin_dst = haddr_to_bin(dst)
+        coll_type = struct.unpack("B", bin_dst[0])[0] >> 2
         src_rank = struct.unpack("<h", bin_dst[2:4])[0]
         dst_rank = struct.unpack("<h", bin_dst[4:6])[0]
 
         self.logger.info("SDNMPI communication from rank %s to rank %s",
                          src_rank, dst_rank)
+        self.logger.info("Collective type is: %s", coll_type)
 
         # True MAC address of dst, resolved using ProcessManager
         true_dst = self.send_request(RankResolutionRequest(dst_rank)).mac
