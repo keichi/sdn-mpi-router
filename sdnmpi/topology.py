@@ -34,6 +34,18 @@ class FindRouteReply(EventReplyBase):
         super(FindRouteReply, self).__init__(dst)
         self.fdb = fdb
 
+class FindAllRoutesRequest(EventRequestBase):
+    def __init__(self, src_mac, dst_mac):
+        super(FindAllRoutesRequest, self).__init__()
+        self.dst = "TopologyManager"
+        self.src_mac = src_mac
+        self.dst_mac = dst_mac
+
+
+class FindAllRoutesReply(EventReplyBase):
+    def __init__(self, dst, fdb):
+        super(FindAllRoutesReply, self).__init__(dst)
+        self.fdbs = fdbs
 
 class BroadcastRequest(EventRequestBase):
     def __init__(self, data, src_dpid, src_in_port):
@@ -127,6 +139,12 @@ class TopologyManager(app_manager.RyuApp):
     def _find_route_request_handler(self, req):
         fdb = self.topologydb.find_route(req.src_mac, req.dst_mac)
         reply = FindRouteReply(req.src, fdb)
+        self.reply_to_request(req, reply)
+
+    @set_ev_cls(FindAllRoutesRequest)
+    def _find_all_routes_request_handler(self, req):
+        fdbs = self.topologydb.find_route(req.src_mac, req.dst_mac, True)
+        reply = FindAllRoutesRequest(req.src, fdbs)
         self.reply_to_request(req, reply)
 
     def _is_edge_port(self, port):

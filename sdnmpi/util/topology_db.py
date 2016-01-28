@@ -1,3 +1,6 @@
+from collections import deque
+
+
 # TODO Should not depend on a specific version of ofproto
 import ryu.ofproto.ofproto_v1_0 as ofproto
 
@@ -53,7 +56,7 @@ class TopologyDB(object):
             "hosts": hosts,
         }
 
-    def _find_route(self, src_dpid, dst_dpid):
+    def _find_route_dfs(self, src_dpid, dst_dpid):
         """Find a route between two switches using DFS
         Returns a list of switches included in the route"""
         # visited switches
@@ -80,10 +83,61 @@ class TopologyDB(object):
         # destination is unreachable
         return []
 
+    def _find_routes_bfs(self, src_dpid, dst_dpid):
+        """Find a route between two switches using BFS
+        Returns a list of switches included in the route"""
+        # possible routers
+        routes = []
+
+        # intermediate paths
+        paths = deque()
+        paths.append([src_dpid])
+        while paths:
+            current_path = paths.popleft()
+            dpid = current_path[-1]
+            # we have reached the goal
+            if dpid == dst_dpid:
+                routes.append(current_path)
+                continue
+            # check if switch has outgoing links
+            if dpid not in self.links:
+                continue
+            # loop through outgoing links
+            for next_dpid in sorted(self.links[dpid].keys()):
+                # if the link is connected to an unvisited switch
+                if next_dpid not in current_path:
+                    next_path = list(current_path)
+                    next_path.append(next_dpid)
+                    paths.append(next_path)
+
+        # dst is unreachable from src
+        if not routes:
+            return routes
+
+        # calculate shortest path cost
+        routes.sort(key=len)
+        shortest_cost = len(routes[0])
+
+        # only return the path with shortest cost
+        return [route for route in routes if len(route) == shortest_cost]
+
     def _mac_to_int(self, mac):
         return int(mac.replace(":", ""), 16)
 
-    def find_route(self, src_mac, dst_mac):
+    def _route_to_fdb(self, route, is_local_dst, dst_dpid, dst_mac):
+        fdb = []
+        for idx, dpid in enumerate(route[:-1]):
+            fdb.append((dpid, self.links[dpid][route[idx+1]].src.port_no))
+
+        # Dst switch to dst host
+        if is_local_dst:
+            fdb.append((dst_dpid, ofproto.OFPP_LOCAL))
+        else:
+            fdb.append((dst_dpid, self.hosts[dst_mac].port.port_no))
+
+        return fdb
+
+    def find_route(self, src_mac, dst_mac, multiple=False):
         """Find a route between two hosts using depth-first search
         Returns a list of tuples (datapath id, output port)"""
         # Check if src/dst is a switch local port
@@ -111,19 +165,24 @@ class TopologyDB(object):
         else:
             dst_dpid = self.hosts[dst_mac].port.dpid
 
-        # Perform depth-first search to find a route from src to dst
-        route = self._find_route(src_dpid, dst_dpid)
-        if not route:
-            return []
+        if multiple:
+            # Perform breadth-first search to find a route from src to dst
+            routes = self._find_routes_bfs(src_dpid, dst_dpid)
+            if not routes:
+                return []
 
-        fdb = []
-        for idx, dpid in enumerate(route[:-1]):
-            fdb.append((dpid, self.links[dpid][route[idx+1]].src.port_no))
+            fdbs = []
+            for route in routes:
+                fdb = self._route_to_fdb(route, is_local_dst, dst_dpid,
+                                         dst_mac)
+                fdbs.append(fdb)
 
-        # Dst switch to dst host
-        if is_local_dst:
-            fdb.append((dst_dpid, ofproto.OFPP_LOCAL))
+            return fdbs
         else:
-            fdb.append((dst_dpid, self.hosts[dst_mac].port.port_no))
+            # Perform depth-first search to find a route from src to dst
+            route = self._find_route_dfs(src_dpid, dst_dpid)
+            if not route:
+                return []
 
-        return fdb
+            fdb = self._route_to_fdb(route, is_local_dst, dst_dpid, dst_mac)
+            return fdb

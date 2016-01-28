@@ -88,3 +88,13 @@ class TopologyDBTestCase(TestCase):
         eq_(route, [(2, 3), (4, 1)])
         route = self.topology.find_route(MAC3, MAC4)
         eq_(route, [(3, 2), (4, 1)])
+
+    def test_find_multiple_routes(self):
+        routes = self.topology.find_route(MAC1, MAC4, True)
+        route1 = [(1, 2), (2, 3), (4, 1)]
+        route2 = [(1, 3), (3, 2), (4, 1)]
+        eq_(sorted(routes), sorted([route1, route2]))
+
+        routes = self.topology.find_route(MAC3, MAC4, True)
+        route1 = [(3, 2), (4, 1)]
+        eq_(sorted(routes), [route1])
