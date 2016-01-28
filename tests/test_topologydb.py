@@ -98,3 +98,12 @@ class TopologyDBTestCase(TestCase):
         routes = self.topology.find_route(MAC3, MAC4, True)
         route1 = [(3, 2), (4, 1)]
         eq_(sorted(routes), [route1])
+
+    def test_find_multiple_routes_unreachable(self):
+        del self.topology.links[1]
+        routes = self.topology.find_route(MAC1, MAC2, True)
+        eq_(routes, [])
+        routes = self.topology.find_route(MAC1, MAC3, True)
+        eq_(routes, [])
+        routes = self.topology.find_route(MAC1, MAC4, True)
+        eq_(routes, [])
