@@ -16,4 +16,4 @@ ryu==3.26
 six==1.10.0
 stevedore==1.9.0
 WebOb==1.5.0
-wheel==0.24.0
+wheel==0.38.1
